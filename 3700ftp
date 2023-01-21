@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+import socket
+from urllib.parse import urlparse
+import sys
+# the following modules would not be allowed: urllib.request, ftplib, and pycurl.3
+
+
+def main():
+    # ["ls", "mkdir", "rm", "rmdir", "cp", "mv"]
+    # all requests end with \r\n
+    url = ""
+    url2 = ""
+    cmd = str(sys.argv[1]).lower()
+    if(cmd == "ls" or cmd == "mkdir" or cmd == "rm" or cmd == "rmdir"):
+        url = sys.argv[2]
+    elif (cmd == "cp" or cmd == "mv"):
+        url = sys.argv[2]
+        url2 = sys.argv[3]
+    perform_command(cmd, url, url2)
+
+
+
+#user pass type mode stru quit mkd rmd
+def perform_command(cmd, url, url2):
+    cmdict = {
+        "ls":"LIST",
+        "rm":"DELE",
+        "mkdir":"MKD",
+        "rmdir":"RMD",
+        "cp":None,
+        "mv":None
+    }
+    user = None
+    password = None
+    port = None
+    host = None
+    parse1 = None
+    parse2 = None
+    path = ""
+    if(url.startswith("ftp://")):
+        parse1 = urlparse(url)
+        user = parse1.username if parse1.username is not None else "anonymous"
+        password = parse1.password
+        host = parse1.hostname
+        port = parse1.port if parse1.port is not None else 21
+        path = parse1.path
+    elif(url2 != "" and url2.startswith("ftp://")):
+        parse2 = urlparse(url2)
+        user = parse2.username if parse2.username is not None else "anonymous"
+        password = parse2.password
+        host = parse2.hostname
+        port = parse2.port if parse2.port is not None else 21
+        path = parse2.path
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        MESSAGE_USER = "USER {}\r\n".format(user)
+        MESSAGE_PASS = "PASS {}\r\n".format(password)
+        MESSAGE_TYPE = "TYPE I\r\n"
+        MESSAGE_MODE = "MODE S\r\n"
+        MESSAGE_STRU = "STRU F\r\n"
+        MESSAGE_QUIT = "QUIT\r\n"
+        s.connect((host, port))
+        print(s.recv(2048))
+        s.send(MESSAGE_USER.encode())
+        print(s.recv(2048))
+        if(password is not None):
+            s.send(MESSAGE_PASS.encode())
+            print(s.recv(2048))
+        if(cmdict[cmd] is not None):
+            s.send("{cmd} {path}\r\n".format(cmd=cmdict[cmd], path=path).encode())
+            print(s.recv(2048))
+        s.send(MESSAGE_QUIT.encode())
+        return
+if __name__ == "__main__":
+    main()
