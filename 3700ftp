@@ -20,7 +20,6 @@ def main():
 
 
 
-#user pass type mode stru quit mkd rmd
 def perform_command(cmd, url, url2):
     cmdict = {
         "ls":"LIST",
@@ -51,6 +50,10 @@ def perform_command(cmd, url, url2):
         host = parse2.hostname
         port = parse2.port if parse2.port is not None else 21
         path = parse2.path
+
+    send_command(user, password, host, port, path)
+
+def send_command(user, password, host, port, path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         MESSAGE_USER = "USER {}\r\n".format(user)
         MESSAGE_PASS = "PASS {}\r\n".format(password)
@@ -70,5 +73,13 @@ def perform_command(cmd, url, url2):
             print(s.recv(2048))
         s.send(MESSAGE_QUIT.encode())
         return
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     main()
