@@ -51,15 +51,12 @@ def perform_command(cmd, url, url2):
         port = parse2.port if parse2.port is not None else 21
         path = parse2.path
 
-    send_command(user, password, host, port, path)
+    send_command(user, password, host, port, path, cmd, cmdict)
 
-def send_command(user, password, host, port, path):
+def send_command(user, password, host, port, path, cmd, cmdict):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         MESSAGE_USER = "USER {}\r\n".format(user)
         MESSAGE_PASS = "PASS {}\r\n".format(password)
-        MESSAGE_TYPE = "TYPE I\r\n"
-        MESSAGE_MODE = "MODE S\r\n"
-        MESSAGE_STRU = "STRU F\r\n"
         MESSAGE_QUIT = "QUIT\r\n"
         s.connect((host, port))
         print(s.recv(2048))
@@ -68,6 +65,10 @@ def send_command(user, password, host, port, path):
         if(password is not None):
             s.send(MESSAGE_PASS.encode())
             print(s.recv(2048))
+        if(cmd not in ["mkdir", "rmdir"]):
+            send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict)
+            s.send(MESSAGE_QUIT.encode())
+            return
         if(cmdict[cmd] is not None):
             s.send("{cmd} {path}\r\n".format(cmd=cmdict[cmd], path=path).encode())
             print(s.recv(2048))
@@ -75,6 +76,24 @@ def send_command(user, password, host, port, path):
         return
 
 
+def send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict):
+    MESSAGE_PASV = "PASV\r\n"
+    MESSAGE_TYPE = "TYPE I\r\n"
+    MESSAGE_MODE = "MODE S\r\n"
+    MESSAGE_STRU = "STRU F\r\n"
+    s.send(MESSAGE_PASV.encode())
+    ip_info = s.recv(2048).decode()
+    print(ip_info)
+    idx = ip_info.index('(')
+    ip = ip_info[idx:]
+    ip = ip.replace(" ", "")
+    ip = ip.replace("(", "")
+    ip = ip.replace("\r\n", "")
+    ip = ip.replace(")", "")
+    ip_arr = ip.split(",")
+    port = (int(ip_arr[len(ip_arr) - 2]) << 8) + int(ip_arr[len(ip_arr) - 1])
+    ip = '.'.join(ip_arr[0:4])
+    print("ip: ", ip, " -- port: ", port)
 
 
 
