@@ -2,26 +2,25 @@
 import socket
 from urllib.parse import urlparse
 import sys
-# the following modules would not be allowed: urllib.request, ftplib, and pycurl.3
+import os
 
 
+#main function. parses inputs and then sends data to method to perform command
 def main():
-    # ["ls", "mkdir", "rm", "rmdir", "cp", "mv"]
-    # all requests end with \r\n
-    url = ""
-    url2 = ""
+    url = "" # the first url given. usually ftp:// but can change if MV or CP
+    url2 = "" # the second url given. only used with MV and CP
     cmd = str(sys.argv[1]).lower()
     if(cmd == "ls" or cmd == "mkdir" or cmd == "rm" or cmd == "rmdir"):
-        url = sys.argv[2]
+        url = sys.argv[2] #set the url to the ftp:// url given in the args
     elif (cmd == "cp" or cmd == "mv"):
         url = sys.argv[2]
-        url2 = sys.argv[3]
-    perform_command(cmd, url, url2)
+        url2 = sys.argv[3] # set url and url2 to the two urls, not sure which one is which yet
+    parse_data(cmd, url, url2)
 
 
-
-def perform_command(cmd, url, url2):
-    cmdict = {
+# get all of the data that is needed to connect to ftp server and make call
+def parse_data(cmd, url, url2):
+    cmdict = { #maps commands to their respective ftp counterparts; cp and mv are different
         "ls":"LIST",
         "rm":"DELE",
         "mkdir":"MKD",
@@ -36,6 +35,9 @@ def perform_command(cmd, url, url2):
     parse1 = None
     parse2 = None
     path = ""
+    local = None
+    # below code looks for the actual ftp url and gets the necessary data out of it
+    # if the other url exists, it's just saved as its own string. nothing to parse
     if(url.startswith("ftp://")):
         parse1 = urlparse(url)
         user = parse1.username if parse1.username is not None else "anonymous"
@@ -43,6 +45,7 @@ def perform_command(cmd, url, url2):
         host = parse1.hostname
         port = parse1.port if parse1.port is not None else 21
         path = parse1.path
+        local = (url2, True) if url2 is not None else None
     elif(url2 != "" and url2.startswith("ftp://")):
         parse2 = urlparse(url2)
         user = parse2.username if parse2.username is not None else "anonymous"
@@ -50,54 +53,97 @@ def perform_command(cmd, url, url2):
         host = parse2.hostname
         port = parse2.port if parse2.port is not None else 21
         path = parse2.path
+        local = (url, False)
 
-    send_command(user, password, host, port, path, cmd, cmdict)
+    #now that we have parsed all of our data, it's time to send the actual command out
+    send_command(user, password, host, port, path, cmd, cmdict, local)
 
-def send_command(user, password, host, port, path, cmd, cmdict):
+
+#makes the primary ftp connection. if it doesn't require a passive socket
+#then all of the ftp communication happens here. otherwise it 
+#delegates the passive socket endeavors to another method
+def send_command(user, password, host, port, path, cmd, cmdict, local):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         MESSAGE_USER = "USER {}\r\n".format(user)
         MESSAGE_PASS = "PASS {}\r\n".format(password)
         MESSAGE_QUIT = "QUIT\r\n"
-        s.connect((host, port))
-        print(s.recv(2048))
-        s.send(MESSAGE_USER.encode())
-        print(s.recv(2048))
-        if(password is not None):
+        s.connect((host, port)) #make connection
+        print(s.recv(2048).decode()) #print welcome
+        s.send(MESSAGE_USER.encode()) #send USER message to login
+        print(s.recv(2048).decode()) #receive success
+        if(password is not None): #if password is given, authenticate
             s.send(MESSAGE_PASS.encode())
-            print(s.recv(2048))
+            print(s.recv(2048).decode())
         if(cmd not in ["mkdir", "rmdir"]):
-            send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict)
+            #command requires passive channel. delegate to different method
+            send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict, local)
             s.send(MESSAGE_QUIT.encode())
+            print(s.recv(2048).decode())
             return
-        if(cmdict[cmd] is not None):
+        elif(cmdict[cmd] is not None):
+            #command does not require a passive channel. send command and quit
             s.send("{cmd} {path}\r\n".format(cmd=cmdict[cmd], path=path).encode())
-            print(s.recv(2048))
+            print(s.recv(2048).decode())
         s.send(MESSAGE_QUIT.encode())
         return
 
 
-def send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict):
+#method that handles commands which require passive channel
+def send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict, local):
     MESSAGE_PASV = "PASV\r\n"
     MESSAGE_TYPE = "TYPE I\r\n"
     MESSAGE_MODE = "MODE S\r\n"
     MESSAGE_STRU = "STRU F\r\n"
-    s.send(MESSAGE_PASV.encode())
-    ip_info = s.recv(2048).decode()
-    print(ip_info)
-    idx = ip_info.index('(')
-    ip = ip_info[idx:]
-    ip = ip.replace(" ", "")
-    ip = ip.replace("(", "")
-    ip = ip.replace("\r\n", "")
-    ip = ip.replace(")", "")
-    ip_arr = ip.split(",")
-    port = (int(ip_arr[len(ip_arr) - 2]) << 8) + int(ip_arr[len(ip_arr) - 1])
-    ip = '.'.join(ip_arr[0:4])
-    print("ip: ", ip, " -- port: ", port)
+    s.send(MESSAGE_PASV.encode()) #send message to create passive channel
+    ip_info = s.recv(2048).decode() #receive ip information 
+    idx = ip_info.index('(') # cut off the useless part and prepare to parse out ip
+    ip = ip_info[idx:].replace(" ", "").replace("(", "").replace("\r\n", "").replace(")", "")
+    ip_arr = ip.split(",") # make into array to parse out ip
+    port = (int(ip_arr[len(ip_arr) - 2]) << 8) + int(ip_arr[len(ip_arr) - 1]) #calculate port
+    ip = '.'.join(ip_arr[0:4]) #set ip address
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as p:
+        p.connect((ip, port)) #connect to passive channel
+        s.send(MESSAGE_TYPE.encode()) 
+        print(s.recv(2048).decode())
+        s.send(MESSAGE_MODE.encode())
+        print(s.recv(2048).decode())
+        s.send(MESSAGE_STRU.encode())
+        print(s.recv(2048).decode())
+        #above code sets the necessary settings and receives the success responses
+        if(cmdict[cmd] is None): # we are dealing with mv or cp so we delegate to another method
+            send_mv_cp(p, s, path, cmd, local)
+            return
+        msg = "{x} {y}\r\n".format(x=cmdict[cmd], y=path) #not dealing with mv or cp so only 1 url
+        s.send(msg.encode()) # send message to server
+        if cmd == "ls":
+            print(p.recv(2048).decode()) #print success msg
 
 
-
-
+#deals with mv and cp commands. special because they use two url's
+def send_mv_cp(p, s, path, cmd, local):
+    start = "STOR" if not local[1] else "RETR" # set command type depending on which url came first
+    remove = cmd == "mv" #a file must be deleted if it is mv. cp does not delete files
+    msg = "{} {}\r\n".format(start, path) #create message
+    s.send(msg.encode())
+    print(s.recv(2048).decode()) #send message. receive success
+    if(start == "STOR"):
+        #if we are storing, send the file data to the server
+        with open(local[0], "r") as f:
+            print("sending file ", local[0])
+            p.send(f.read().encode())
+            #remove the file from our system if it is an MV function
+            if remove:
+                os.remove(local[0])
+    else:
+        #if we are retrieving, create new file and put data from server into it
+        with open(local[0], "w") as f:
+            f.write(p.recv(4096).decode())
+            #remove the file from the server since we are MVing. this requires a DELE
+            if remove:
+                msg = "DELE {}\r\n".format(path)
+                s.send(msg.encode())
+                print(s.recv(2048).decode()) #print delete success
+    
 
 
 if __name__ == "__main__":
