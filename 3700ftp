@@ -129,21 +129,21 @@ def send_mv_cp(p, s, path, cmd, local):
     print(s.recv(2048).decode()) #send message. receive success
     if(start == "STOR"):
         #if we are storing, send the file data to the server
-        with open(local[0], "r") as f:
+        with open(local[0], "rb") as f:
             print("sending file ", local[0])
-            p.send(f.read().encode())
+            p.send(f.read())
             #remove the file from our system if it is an MV function
             if remove:
                 os.remove(local[0])
     else:
         #if we are retrieving, create new file and put data from server into it
-        with open(local[0], "w") as f:
-            f.write(p.recv(4096).decode())
+        with open(local[0], "wb") as f:
+            f.write(p.recv(8192))
             #remove the file from the server since we are MVing. this requires a DELE
             if remove:
                 msg = "DELE {}\r\n".format(path)
                 s.send(msg.encode())
-                print(s.recv(2048).decode()) #print delete success
+                print(s.recv(8192).decode()) #print delete success
     
 
 
