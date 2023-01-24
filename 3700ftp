@@ -98,8 +98,8 @@ def send_pasv_cmd(s, user, password, host, port, path, cmd, cmdict, local):
     ip_info = s.recv(2048).decode() #receive ip information 
     print(ip_info)
     idx = ip_info.index('(') # cut off the useless part and prepare to parse out ip
-    ip = ip_info[idx:].replace(" ", "").replace("(", "").replace("\r\n", "").replace(")", "").replace(",",".")
-    ip_arr = ip.split(".") # make into array to parse out ip
+    ip = ip_info[idx:].replace(" ", "").replace("(", "").replace("\r\n", "").replace(")", "").replace(".","")
+    ip_arr = ip.split(",") # make into array to parse out ip
     port = (int(ip_arr[len(ip_arr) - 2]) << 8) + int(ip_arr[len(ip_arr) - 1]) #calculate port
     ip = '.'.join(ip_arr[0:4]) #set ip address
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as p:
