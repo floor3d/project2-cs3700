@@ -1,4 +1,4 @@
-# project1-cs3700
+# project2 - cs3700
 
 <h3> High-level approach </h3>
 <p>
